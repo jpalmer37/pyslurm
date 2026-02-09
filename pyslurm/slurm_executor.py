@@ -122,7 +122,7 @@ class SlurmExecutor():
     def run_slurm_array(self, 
                         function: Callable, 
                         function_arg_list: List[tuple], 
-                        function_kwargs_list: Optional[List[Dict[str, Any]]] = None) -> Tuple[List[Any], bool]:
+                        function_kwargs_list: Optional[List[Dict[str, Any]]] = None) -> List[Any]:
         """
         Submit and execute a SLURM job array.
         
@@ -132,7 +132,7 @@ class SlurmExecutor():
             function_kwargs_list: Optional list of keyword argument dicts, one per job
             
         Returns:
-            Tuple of (job_list, success_status) where success_status is True if all jobs completed
+            List of job objects. Users can inspect job.state to determine success/failure.
         """
         self.logger.info(json.dumps({
             "event_type": "slurm_array_start",
@@ -188,7 +188,6 @@ class SlurmExecutor():
         # Check for any jobs that did not complete in time
         if not all(job_complete):
             self.logger.error(json.dumps({"event_type": "slurm_jobs_timeout"}))
-            return job_list, False
         
         # Log any failed jobs
         failed_jobs = [job for job in job_list if job.state == "FAILED"]
@@ -222,13 +221,11 @@ class SlurmExecutor():
                     "num_completed_jobs": len(completed_jobs)
                 }))
 
-        success = len(failed_jobs) == 0
         self.logger.info(json.dumps({
             "event_type": "slurm_array_complete",
-            "success": success,
             "completed": len([j for j in job_list if j.state == "COMPLETED"]),
             "failed": len(failed_jobs),
             "total": len(job_list)
         }))
         
-        return job_list, success
+        return job_list

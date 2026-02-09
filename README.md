@@ -76,18 +76,22 @@ function_arg_list = [
 ]
 
 # Submit and run jobs
-job_list, success = executor.run_slurm_array(
+job_list = executor.run_slurm_array(
     function=my_task,
     function_arg_list=function_arg_list
 )
 
-if success:
+# Check job status and get results
+completed_jobs = [job for job in job_list if job.state == "COMPLETED"]
+failed_jobs = [job for job in job_list if job.state == "FAILED"]
+
+if len(completed_jobs) == len(job_list):
     print("All jobs completed successfully!")
     # Get results
     results = [job.result() for job in job_list]
     print(f"Results: {results}")
 else:
-    print("Some jobs failed")
+    print(f"{len(completed_jobs)}/{len(job_list)} jobs completed, {len(failed_jobs)} failed")
 ```
 
 ### Custom Logging
@@ -154,7 +158,7 @@ function_kwargs_list = [
 ]
 
 # Submit jobs
-job_list, success = executor.run_slurm_array(
+job_list = executor.run_slurm_array(
     function=process_data,
     function_arg_list=function_arg_list,
     function_kwargs_list=function_kwargs_list
