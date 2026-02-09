@@ -75,13 +75,14 @@ function_arg_list = [
     (5, 6)
 ]
 
-# Submit and run jobs
+# Submit and run jobs (waits for all to complete)
 job_list = executor.run_slurm_array(
     function=my_task,
     function_arg_list=function_arg_list
 )
 
 # Check job status and get results
+# Note: All jobs will be in a terminal state (COMPLETED or FAILED)
 completed_jobs = [job for job in job_list if job.state == "COMPLETED"]
 failed_jobs = [job for job in job_list if job.state == "FAILED"]
 
