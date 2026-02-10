@@ -43,6 +43,7 @@ class SlurmExecutor():
         log_dir = config.get("log_dir", "slurm_logs")
         self.check_interval = config.get("check_interval", 30)
         self.delete_logs = config.get("delete_logs", True)
+        self.max_array_size = config.get("max_array_size", 1000)
         
         # Log initialization
         self.logger.info(json.dumps({
@@ -60,7 +61,7 @@ class SlurmExecutor():
             slurm_time=config.get("time", "01:00:00"),
             slurm_mem=config.get("mem", "4G"),
             slurm_cpus_per_task=config.get("cpus_per_task", 1),
-            slurm_array_parallelism=config.get("array_parallelism", 4)
+            slurm_array_parallelism=config.get("array_parallelism", 8),
         )
         
         self.logger.info(json.dumps({
@@ -136,96 +137,101 @@ class SlurmExecutor():
         """
         self.logger.info(json.dumps({
             "event_type": "slurm_array_start",
-            "num_jobs": len(function_arg_list),
-            "function_name": function.__name__
+            "num_jobs": len(function_arg_list)
         }))
 
         # Prepare kwargs list if not provided
         if function_kwargs_list is None:
             function_kwargs_list = [{}] * len(function_arg_list)
 
-        # Submit jobs
-        job_list = []
-        with self.executor.batch():
-            for idx, (args, kw_args) in enumerate(zip(function_arg_list, function_kwargs_list)):
-                job = self.executor.submit(function, *args, **kw_args)
-                job_list.append(job)
-                self.logger.debug(json.dumps({
-                    "event_type": "job_submitted",
-                    "job_index": idx,
-                    "job_id": job.job_id
-                }))
-        
-        self.logger.info(json.dumps({
-            "event_type": "jobs_submitted",
-            "num_jobs": len(job_list),
-            "job_ids": [job.job_id for job in job_list]
-        }))
-        
-        # Continue checking for all jobs to complete
-        job_complete = [job.done() for job in job_list]
-        check_count = 0
-        while not all(job_complete):
-            time.sleep(self.check_interval)
-            job_complete = [job.done() for job in job_list]
-            check_count += 1
-            
-            completed_count = sum(job_complete)
-            self.logger.info(json.dumps({
-                "event_type": "job_status_check",
-                "check_count": check_count,
-                "completed": completed_count,
-                "total": len(job_list),
-                "pending": len(job_list) - completed_count
-            }))
-        
-        self.logger.info(json.dumps({
-            "event_type": "all_jobs_completed",
-            "num_jobs": len(job_list),
-            "total_checks": check_count
-        }))
-        
-        # Check for any jobs that did not complete in time
-        if not all(job_complete):
-            self.logger.error(json.dumps({"event_type": "slurm_jobs_timeout"}))
-        
-        # Log any failed jobs
-        failed_jobs = [job for job in job_list if job.state == "FAILED"]
-        if failed_jobs:
-            self.logger.warning(json.dumps({
-                "event_type": "failed_jobs_detected",
-                "num_failed": len(failed_jobs)
-            }))
-            
-            for job in failed_jobs:
-                self.logger.error(json.dumps({
-                    "event_type": "slurm_job_failed", 
-                    "job_id": job.job_id, 
-                    "exception": str(job.exception()), 
-                    "stderr": str(job.stderr())
-                }))
-        
-        # Optionally delete logs for completed jobs
-        if self.delete_logs:
-            completed_jobs = [job for job in job_list if job.state == "COMPLETED"]
-            deleted_files = 0
-            for job in completed_jobs:
-                for file_path in glob(os.path.join(self.executor.folder, f"{job.job_id}*")):
-                    os.remove(file_path)
-                    deleted_files += 1
-            
-            if deleted_files > 0:
-                self.logger.info(json.dumps({
-                    "event_type": "logs_deleted",
-                    "num_files": deleted_files,
-                    "num_completed_jobs": len(completed_jobs)
-                }))
+        arg_list_chunks = [ function_arg_list[i: i+ self.max_array_size] for i in range(0, len(function_arg_list), self.max_array_size)]
+        kwarg_list_chunks = [ function_kwargs_list[i: i+ self.max_array_size] for i in range(0, len(function_kwargs_list), self.max_array_size)]
 
-        self.logger.info(json.dumps({
-            "event_type": "slurm_array_complete",
-            "completed": len([j for j in job_list if j.state == "COMPLETED"]),
-            "failed": len(failed_jobs),
-            "total": len(job_list)
-        }))
+        # Submit jobs
+        master_job_list = []
+
+        for n, (arg_list_chunk, kwarg_list_chunk) in enumerate(zip(arg_list_chunks, kwarg_list_chunks), start=1):
+
+            self.logger.info(json.dumps({
+                "event_type": "submitting_job_chunk",
+                "chunk_size": len(arg_list_chunk),
+                "chunk_index": n,
+            }))
+
+            job_list = []
+
+            with self.executor.batch():
+                for idx, (args, kw_args) in enumerate(zip(arg_list_chunk, kwarg_list_chunk)):
+                    job = self.executor.submit(function, *args, **kw_args)
+                    job_list.append(job)
         
-        return job_list
+            # Continue checking for all jobs to complete
+            job_complete = [job.done() for job in job_list]
+            check_count = 0
+
+            while not all(job_complete):
+                time.sleep(self.check_interval)
+                job_complete = [job.done() for job in job_list]
+                check_count += 1
+                
+                completed_count = sum(job_complete)
+                self.logger.info(json.dumps({
+                    "event_type": "job_status_check",
+                    "check_count": check_count,
+                    "completed": completed_count,
+                    "total": len(job_list),
+                    "pending": len(job_list) - completed_count
+                }))
+            
+            self.logger.info(json.dumps({
+                "event_type": "all_jobs_completed",
+                "num_jobs": len(job_list),
+                "total_checks": check_count
+            }))
+            
+            # Check for any jobs that did not complete in time
+            if not all(job_complete):
+                self.logger.error(json.dumps({"event_type": "slurm_jobs_timeout"}))
+            
+            # Log any failed jobs
+            failed_jobs = [job for job in job_list if job.state == "FAILED"]
+            if failed_jobs:
+                self.logger.warning(json.dumps({
+                    "event_type": "failed_jobs_detected",
+                    "num_failed": len(failed_jobs)
+                }))
+                
+                for job in failed_jobs:
+                    self.logger.error(json.dumps({
+                        "event_type": "slurm_job_failed", 
+                        "job_id": job.job_id, 
+                        "exception": str(job.exception()), 
+                        "stderr": str(job.stderr())
+                    }))
+            
+            # Optionally delete logs for completed jobs
+            if self.delete_logs:
+                completed_jobs = [job for job in job_list if job.state == "COMPLETED"]
+                deleted_files = 0
+                for job in completed_jobs:
+                    for file_path in glob(os.path.join(self.executor.folder, f"{job.job_id}*")):
+                        os.remove(file_path)
+                        deleted_files += 1
+                
+                if deleted_files > 0:
+                    self.logger.info(json.dumps({
+                        "event_type": "logs_deleted",
+                        "num_files": deleted_files,
+                        "num_completed_jobs": len(completed_jobs)
+                    }))
+
+            self.logger.info(json.dumps({
+                "event_type": "job_chunk_completed",
+                "completed": len([j for j in job_list if j.state == "COMPLETED"]),
+                "failed": len(failed_jobs),
+                "total": len(job_list)
+            }))
+
+            master_job_list.extend(job_list)
+        
+        return master_job_list
