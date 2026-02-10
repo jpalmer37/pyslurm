@@ -43,7 +43,20 @@ class SlurmExecutor():
         log_dir = config.get("log_dir", "slurm_logs")
         self.check_interval = config.get("check_interval", 30)
         self.delete_logs = config.get("delete_logs", True)
-        self.max_array_size = config.get("max_array_size", 1000)
+
+        # Validate max_array_size to ensure it is a positive integer
+        raw_max_array_size = config.get("max_array_size", 1000)
+        try:
+            max_array_size = int(raw_max_array_size)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid max_array_size={raw_max_array_size!r}: must be a positive integer."
+            ) from exc
+        if max_array_size <= 0:
+            raise ValueError(
+                f"Invalid max_array_size={max_array_size!r}: must be a positive integer greater than 0."
+            )
+        self.max_array_size = max_array_size
         
         # Log initialization
         self.logger.info(json.dumps({
@@ -144,6 +157,18 @@ class SlurmExecutor():
         if function_kwargs_list is None:
             function_kwargs_list = [{}] * len(function_arg_list)
 
+        # Validate that we have a one-to-one mapping between args and kwargs
+        if len(function_kwargs_list) != len(function_arg_list):
+            self.logger.error(json.dumps({
+                "event_type": "slurm_array_invalid_input",
+                "message": "function_kwargs_list length must match function_arg_list length",
+                "num_args": len(function_arg_list),
+                "num_kwargs": len(function_kwargs_list),
+            }))
+            raise ValueError(
+                f"function_kwargs_list length ({len(function_kwargs_list)}) must match "
+                f"function_arg_list length ({len(function_arg_list)})"
+            )
         arg_list_chunks = [ function_arg_list[i: i+ self.max_array_size] for i in range(0, len(function_arg_list), self.max_array_size)]
         kwarg_list_chunks = [ function_kwargs_list[i: i+ self.max_array_size] for i in range(0, len(function_kwargs_list), self.max_array_size)]
 
