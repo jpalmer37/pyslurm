@@ -133,6 +133,27 @@ class SlurmExecutor():
         """
         return self.executor.parameters
 
+    def _cleanup_files(self, job_list: List[submitit.Job]) -> None:
+        """
+        Cleanup log files for completed jobs if delete_logs is True.
+        
+        Args:
+            job_list: List of submitit Job objects
+        """
+        completed_jobs = [job for job in job_list if job.state == "COMPLETED"]
+        deleted_files = 0
+        for job in completed_jobs:
+            for file_path in glob(os.path.join(self.executor.folder, f"{job.job_id}*")):
+                os.remove(file_path)
+                deleted_files += 1
+        
+        if deleted_files > 0:
+            self.logger.info(json.dumps({
+                "event_type": "logs_deleted",
+                "num_files": deleted_files,
+                "num_completed_jobs": len(completed_jobs)
+            }))
+
     def run_slurm_array(self, 
                         function: Callable, 
                         function_arg_list: List[tuple], 
@@ -231,19 +252,7 @@ class SlurmExecutor():
             
             # Optionally delete logs for completed jobs
             if self.delete_logs:
-                completed_jobs = [job for job in job_list if job.state == "COMPLETED"]
-                deleted_files = 0
-                for job in completed_jobs:
-                    for file_path in glob(os.path.join(self.executor.folder, f"{job.job_id}*")):
-                        os.remove(file_path)
-                        deleted_files += 1
-                
-                if deleted_files > 0:
-                    self.logger.info(json.dumps({
-                        "event_type": "logs_deleted",
-                        "num_files": deleted_files,
-                        "num_completed_jobs": len(completed_jobs)
-                    }))
+                self._cleanup_files(job_list)
 
             self.logger.info(json.dumps({
                 "event_type": "job_chunk_completed",
@@ -254,7 +263,7 @@ class SlurmExecutor():
 
             master_job_list.extend(job_list)
         
-        logging.info(json.dumps({
+        self.logger.info(json.dumps({
                 "event_type": "slurm_array_completed",
                 "total_jobs": len(master_job_list),
                 "total_chunks": n
