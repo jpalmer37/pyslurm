@@ -183,11 +183,6 @@ class SlurmExecutor():
                     "pending": len(job_list) - completed_count
                 }))
             
-            self.logger.info(json.dumps({
-                "event_type": "all_jobs_completed",
-                "num_jobs": len(job_list),
-                "total_checks": check_count
-            }))
             
             # Check for any jobs that did not complete in time
             if not all(job_complete):
@@ -234,4 +229,10 @@ class SlurmExecutor():
 
             master_job_list.extend(job_list)
         
+        logging.info(json.dumps({
+                "event_type": "slurm_array_completed",
+                "total_jobs": len(master_job_list),
+                "total_chunks": n
+            }))
+
         return master_job_list
