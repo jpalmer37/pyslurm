@@ -43,20 +43,7 @@ class SlurmExecutor():
         log_dir = config.get("log_dir", "slurm_logs")
         self.check_interval = config.get("check_interval", 30)
         self.delete_logs = config.get("delete_logs", True)
-
-        # Validate max_array_size to ensure it is a positive integer
-        raw_max_array_size = config.get("max_array_size", 1000)
-        try:
-            max_array_size = int(raw_max_array_size)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"Invalid max_array_size={raw_max_array_size!r}: must be a positive integer."
-            ) from exc
-        if max_array_size <= 0:
-            raise ValueError(
-                f"Invalid max_array_size={max_array_size!r}: must be a positive integer greater than 0."
-            )
-        self.max_array_size = max_array_size
+        self.max_array_size = config.get("max_array_size", 1000)
         
         # Log initialization
         self.logger.info(json.dumps({
