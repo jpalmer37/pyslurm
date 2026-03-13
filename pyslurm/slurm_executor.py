@@ -1,10 +1,30 @@
 import os
-import json 
+import json
 import logging
 import submitit
 import time
-from glob import glob 
-from typing import Optional, Callable, List, Dict, Tuple, Any
+from glob import glob
+from typing import Optional, Callable, List, Dict, Any
+
+
+# SLURM job states that represent a definitive end of execution.
+# Based on the SLURM documentation: https://slurm.schedmd.com/squeue.html#SECTION_JOB-STATE-CODES
+TERMINAL_STATES = {
+    'BOOT_FAIL',
+    'CANCELLED',
+    'COMPLETED',
+    'DEADLINE',
+    'FAILED',
+    'NODE_FAIL',
+    'OUT_OF_MEMORY',
+    'PREEMPTED',
+    'TIMEOUT',
+}
+
+
+def is_job_done(job: submitit.Job) -> bool:
+    """Return True if the job has reached an explicit terminal SLURM state."""
+    return job.state in TERMINAL_STATES
 
 
 class SlurmExecutor():
@@ -30,6 +50,8 @@ class SlurmExecutor():
                 - array_parallelism: Number of parallel array jobs (default: 4)
                 - check_interval: Interval in seconds to check job status (default: 30)
                 - delete_logs: Whether to delete logs for completed jobs (default: True)
+                - async_mode: When True, return immediately after job submission without
+                  waiting for jobs to complete (default: False)
                 - custom_log_path: Path for custom application logs (optional)
             logger: Optional custom logger instance. If not provided, creates a default logger.
         """
@@ -44,13 +66,15 @@ class SlurmExecutor():
         self.check_interval = config.get("check_interval", 30)
         self.delete_logs = config.get("delete_logs", True)
         self.max_array_size = config.get("max_array_size", 1000)
+        self.async_mode = config.get("async_mode", False)
         
         # Log initialization
         self.logger.info(json.dumps({
             "event_type": "slurm_executor_init",
             "log_dir": log_dir,
             "check_interval": self.check_interval,
-            "delete_logs": self.delete_logs
+            "delete_logs": self.delete_logs,
+            "async_mode": self.async_mode,
         }))
         
         # Initialize submitit executor
@@ -154,7 +178,10 @@ class SlurmExecutor():
             function_kwargs_list: Optional list of keyword argument dicts, one per job
             
         Returns:
-            List of job objects. Users can inspect job.state to determine success/failure.
+            List of submitted job objects. When async_mode is False (default), all jobs
+            will have reached a terminal SLURM state before this method returns. When
+            async_mode is True, the method returns immediately after submission and
+            callers are responsible for monitoring job states.
         """
         self.logger.info(json.dumps({
             "event_type": "slurm_array_start",
@@ -197,56 +224,52 @@ class SlurmExecutor():
                 for idx, (args, kw_args) in enumerate(zip(arg_list_chunk, kwarg_list_chunk)):
                     job = self.executor.submit(function, *args, **kw_args)
                     job_list.append(job)
-        
-            # Continue checking for all jobs to complete
-            job_complete = [job.done() for job in job_list]
-            check_count = 0
 
-            while not all(job_complete):
-                time.sleep(self.check_interval)
-                job_complete = [job.done() for job in job_list]
-                check_count += 1
-                
-                completed_count = sum(job_complete)
-                self.logger.info(json.dumps({
-                    "event_type": "job_status_check",
-                    "check_count": check_count,
-                    "completed": completed_count,
-                    "total": len(job_list),
-                    "pending": len(job_list) - completed_count
-                }))
-            
-            
-            # Check for any jobs that did not complete in time
-            if not all(job_complete):
-                self.logger.error(json.dumps({"event_type": "slurm_jobs_timeout"}))
-            
-            # Log any failed jobs
-            failed_jobs = [job for job in job_list if job.state == "FAILED"]
-            if failed_jobs:
-                self.logger.warning(json.dumps({
-                    "event_type": "failed_jobs_detected",
-                    "num_failed": len(failed_jobs)
-                }))
-                
-                for job in failed_jobs:
-                    self.logger.error(json.dumps({
-                        "event_type": "slurm_job_failed", 
-                        "job_id": job.job_id, 
-                        "exception": str(job.exception()), 
-                        "stderr": str(job.stderr())
+            if not self.async_mode:
+                # Poll until all jobs have reached a terminal SLURM state
+                job_complete = [is_job_done(job) for job in job_list]
+                check_count = 0
+
+                while not all(job_complete):
+                    time.sleep(self.check_interval)
+                    job_complete = [is_job_done(job) for job in job_list]
+                    check_count += 1
+
+                    completed_count = sum(job_complete)
+                    self.logger.info(json.dumps({
+                        "event_type": "job_status_check",
+                        "check_count": check_count,
+                        "completed": completed_count,
+                        "total": len(job_list),
+                        "pending": len(job_list) - completed_count
                     }))
-            
-            # Optionally delete logs for completed jobs
-            if self.delete_logs:
-                self._cleanup_files(job_list)
 
-            self.logger.info(json.dumps({
-                "event_type": "job_chunk_completed",
-                "completed": len([j for j in job_list if j.state == "COMPLETED"]),
-                "failed": len(failed_jobs),
-                "total": len(job_list)
-            }))
+                # Log any failed jobs
+                failed_jobs = [job for job in job_list if job.state == "FAILED"]
+                if failed_jobs:
+                    self.logger.warning(json.dumps({
+                        "event_type": "failed_jobs_detected",
+                        "num_failed": len(failed_jobs)
+                    }))
+
+                    for job in failed_jobs:
+                        self.logger.error(json.dumps({
+                            "event_type": "slurm_job_failed",
+                            "job_id": job.job_id,
+                            "exception": str(job.exception()),
+                            "stderr": str(job.stderr())
+                        }))
+
+                # Optionally delete logs for completed jobs
+                if self.delete_logs:
+                    self._cleanup_files(job_list)
+
+                self.logger.info(json.dumps({
+                    "event_type": "job_chunk_completed",
+                    "completed": len([j for j in job_list if j.state == "COMPLETED"]),
+                    "failed": len(failed_jobs),
+                    "total": len(job_list)
+                }))
 
             master_job_list.extend(job_list)
         

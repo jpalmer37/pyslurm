@@ -9,6 +9,6 @@ __version__ = "0.1.0"
 __author__ = "jpalmer37"
 __description__ = "Module leveraging Meta's submitit library for submitting Python functions to SLURM"
 
-from .slurm_executor import SlurmExecutor
+from .slurm_executor import TERMINAL_STATES, SlurmExecutor, is_job_done
 
-__all__ = ["SlurmExecutor", "__version__"]
+__all__ = ["SlurmExecutor", "TERMINAL_STATES", "is_job_done", "__version__"]
