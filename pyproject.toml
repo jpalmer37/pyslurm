@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyslurm"
-version = "0.1.0"
+version = "0.1.1"
 description = "Module leveraging Meta's submitit library for submitting Python functions to SLURM"
 readme = "README.md"
 authors = [
