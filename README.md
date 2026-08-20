@@ -1,6 +1,33 @@
 # pyslurm
 
-A Python wrapper for submitting and managing SLURM job arrays using Meta's [submitit](https://github.com/facebookincubator/submitit) library.
+[![CI](https://github.com/jpalmer37/pyslurm/actions/workflows/ci.yml/badge.svg)](https://github.com/jpalmer37/pyslurm/actions/workflows/ci.yml)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-3776AB)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
+
+A typed Python interface for submitting and monitoring SLURM job arrays with Meta's [submitit](https://github.com/facebookincubator/submitit) library.
+
+## Audience
+
+`pyslurm` is for Python developers and research-computing teams that need a small, inspectable layer around repeatable SLURM array submission. It is most useful when application code should remain ordinary Python while scheduling, polling, structured logging, chunking, and cleanup stay centralized.
+
+## Architecture
+
+```text
+Python callable + per-task arguments
+              │
+              ▼
+       SlurmExecutor
+  validate → chunk → submit
+              │
+              ▼
+      submitit AutoExecutor
+              │
+              ▼
+    SLURM array jobs + logs
+              │
+              ▼
+ status polling → results/exception objects → optional cleanup
+```
 
 ## Features
 
@@ -27,10 +54,10 @@ pip install -e .
 
 ### Using conda
 
-Create the conda environment from the provided `environment.yaml`:
+Create the conda environment from the provided `environment.yml`:
 
 ```bash
-conda env create -f environment.yaml
+conda env create -f environment.yml
 conda activate pyslurm
 pip install .
 ```
@@ -182,6 +209,10 @@ The package includes comprehensive logging with structured JSON log messages. Lo
 - `logs_deleted`: Log cleanup completed
 - `slurm_array_complete`: Final summary
 
+## Outputs
+
+`run_slurm_array` returns submitted `submitit.Job` objects in input order. With `collect_results=True`, it returns `(jobs, results)`, where each result is either the callable's return value or the exception produced by that job. JSON-structured log messages capture submission, polling, failures, timeouts, and cleanup.
+
 ## Development
 
 ### Setting up development environment
@@ -209,6 +240,12 @@ pytest
 
 MIT License
 
+## Limitations
+
+- A working SLURM installation is required for real submissions; the test suite uses controlled fakes and does not launch cluster jobs.
+- Scheduler parameters are intentionally limited to the options exposed by `SlurmExecutor`; advanced site-specific settings can still be added through submitit in downstream code.
+- The package is currently alpha software. Pin versions and validate scheduler behavior against your cluster before production use.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -216,4 +253,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Acknowledgments
 
 This package is built on top of Meta's excellent [submitit](https://github.com/facebookincubator/submitit) library.
-
