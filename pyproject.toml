@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -27,7 +27,7 @@ classifiers = [
 keywords = ["slurm", "batch", "cluster", "hpc", "submitit"]
 requires-python = ">=3.8"
 dependencies = [
-    "submitit==1.5.2",
+    "submitit>=1.5.4",
 ]
 
 [project.optional-dependencies]
