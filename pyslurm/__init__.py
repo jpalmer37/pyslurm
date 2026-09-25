@@ -5,7 +5,7 @@ This package provides a simple interface for submitting and managing SLURM jobs
 from Python using Meta's submitit library.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 __author__ = "jpalmer37"
 __description__ = "Module leveraging Meta's submitit library for submitting Python functions to SLURM"
 
