@@ -1,6 +1,5 @@
 [build-system]
-
-requires = ["setuptools>=77"]
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,12 +10,13 @@ readme = "README.md"
 authors = [
     {name = "jpalmer37"}
 ]
-license = "MIT"
+license = {text = "MIT"}
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 keywords = ["slurm", "batch", "cluster", "hpc", "submitit"]
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 dependencies = [
     "submitit>=1.5.4",
 ]
@@ -51,11 +51,11 @@ pyslurm = ["py.typed"]
 
 [tool.black]
 line-length = 100
-target-version = ["py39", "py310", "py311", "py312"]
+target-version = ["py38", "py39", "py310", "py311", "py312"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py38"
 
 [tool.ruff.lint]
 select = [

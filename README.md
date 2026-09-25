@@ -64,9 +64,8 @@ pip install .
 
 ## Dependencies
 
-- Python >= 3.9
-- setuptools = 80 (pinned for compatibility)
-- submitit = 1.5.2 (pinned for compatibility)
+- Python >= 3.8
+- submitit >= 1.5.4
 
 ## Usage
 
