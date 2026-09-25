@@ -3,8 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python>=3.8
-  - setuptools=80
+  - python>=3.9
   - pip
   - pip:
-    - submitit==1.5.2
+    - submitit>=1.5.4
